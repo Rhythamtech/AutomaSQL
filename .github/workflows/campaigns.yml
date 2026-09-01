@@ -6,40 +6,110 @@ on:
     paths:
       - "etl_api.py"
       - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/campaigns.yml"
   pull_request:
+    branches: [main]
     paths:
       - "etl_api.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/campaigns.yml"
   workflow_dispatch:
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           python-version: "3.12"
-      - run: uv sync
-      - name: Live API check — always 20-30, today-filter
+      - name: Install deps
+        run: uv sync --frozen --all-groups
+      - name: Live API check — always 20-30, today-filter (etl_api.py)
         run: |
           uv run python -c "
           from fastapi.testclient import TestClient
-          from api import app
+          from etl_api import app
           import datetime as dt
+
           c = TestClient(app)
+
+          # root + health
+          assert c.get('/').status_code == 200, c.get('/').text
           assert c.get('/health').status_code == 200
+          h = c.get('/health').json()
+          assert 'today' in h, h
+
+          # default campaigns
           r = c.get('/api/campaigns')
           assert r.status_code == 200, r.text
           j = r.json()
           assert 20 <= j['count'] <= 30, f\"count {j['count']} not in 20-30\"
+          assert j['count'] == len(j['campaigns']), 'count mismatch'
           today = dt.date.fromisoformat(j['as_of'])
+          assert j['filter']['rule'] == 'campaign_start_date <= today-7 AND campaign_end_date > today'
           for camp in j['campaigns']:
               assert camp['campaign_start_date'] <= (today - dt.timedelta(days=7)).isoformat(), camp
               assert camp['campaign_end_date'] > today.isoformat(), camp
-          # determinism: same as_of -> same count
+              # required fields
+              for k in ['campaign_id','channel','campaign_type','roi','campaign_cost','revenue_generated']:
+                  assert k in camp, f'missing {k} in {camp}'
+
+          # determinism: same as_of -> same count and ids
           r2 = c.get('/api/campaigns')
-          assert r2.json()['count'] == j['count']
-          print(f\"OK as_of={j['as_of']} count={j['count']}\")
+          assert r2.json()['count'] == j['count'], 'non-deterministic default'
+          assert {x[\"campaign_id\"] for x in r2.json()['campaigns']} == {x[\"campaign_id\"] for x in j['campaigns']}
+
+          # as_of override is deterministic
+          as_of = '2025-06-15'
+          ra = c.get(f'/api/campaigns?as_of={as_of}')
+          assert ra.status_code == 200, ra.text
+          ja = ra.json()
+          assert ja['as_of'] == as_of
+          assert 20 <= ja['count'] <= 30
+          rb = c.get(f'/api/campaigns?as_of={as_of}')
+          assert rb.json()['count'] == ja['count']
+          assert {x['campaign_id'] for x in rb.json()['campaigns']} == {x['campaign_id'] for x in ja['campaigns']}
+          # all campaigns respect as_of filter
+          for camp in ja['campaigns']:
+              assert camp['campaign_start_date'] <= (dt.date.fromisoformat(as_of) - dt.timedelta(days=7)).isoformat()
+              assert camp['campaign_end_date'] > as_of
+
+          # channel filter
+          if j['campaigns']:
+              ch = j['campaigns'][0]['channel']
+              rc = c.get(f'/api/campaigns?channel={ch}')
+              assert rc.status_code == 200
+              jc = rc.json()
+              assert all(x['channel'] == ch for x in jc['campaigns']), jc
+              assert jc['count'] <= j['count']
+
+          # type filter
+          if j['campaigns']:
+              tp = j['campaigns'][0]['campaign_type']
+              rt = c.get(f'/api/campaigns?type={tp}')
+              assert rt.status_code == 200
+              jt = rt.json()
+              assert all(x['campaign_type'] == tp for x in jt['campaigns']), jt
+
+          # bad as_of -> 400
+          assert c.get('/api/campaigns?as_of=bad-date').status_code == 400
+          assert c.get('/api/campaigns/ANY?as_of=bad-date').status_code == 400
+
+          # by id: ok and 404
+          cid = j['campaigns'][0]['campaign_id']
+          r_id = c.get(f'/api/campaigns/{cid}')
+          assert r_id.status_code == 200, r_id.text
+          assert r_id.json()['campaign']['campaign_id'] == cid
+          # as_of variant
+          r_id2 = c.get(f'/api/campaigns/{cid}?as_of={as_of}')
+          # may be 404 if not active on that date, but should be 200 or 404
+          assert r_id2.status_code in (200, 404)
+          assert c.get('/api/campaigns/NONEXISTENT123').status_code == 404
+
+          print(f\"OK as_of={j['as_of']} count={j['count']} as_of={as_of} count={ja['count']} channel={ch} type={tp}\")
           "
