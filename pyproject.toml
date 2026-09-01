@@ -1,0 +1,20 @@
+[project]
+name = "automasql"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "faker>=40.37.0",
+    "fastapi>=0.110.0",
+    "numpy>=2.5.2",
+    "pandas>=3.0.5",
+    "psycopg[binary]>=3.3.5",
+    "python-dotenv>=1.2.3",
+    "uvicorn[standard]>=0.29.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+]
