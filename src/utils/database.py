@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 from psycopg.connection import Connection
+from typing import Optional
 import psycopg  # psycopg v3
 import sys
 import os
@@ -36,7 +37,7 @@ class DatabaseUtils :
         return psycopg.connect(self.URL, row_factory=dict_row)
     
     
-    def execute_query(self,conn : Connection[DictRow], query :str, params : tuple ):
+    def execute_query(self,conn : Connection[DictRow], query :str, params :tuple | None = None):
         try:
             with conn.cursor() as cur:
                 cur.execute(query, params)
@@ -47,14 +48,10 @@ class DatabaseUtils :
 
 
 if __name__ == "__main__":
-    from config.constant  import GET_DB_COLUMN_SCHEMA, GET_DB_TABLE_SCHEMA
+    #from config.constant  import GET_DB_COLUMN_SCHEMA, GET_DB_TABLE_SCHEMA
     
     db = DatabaseUtils()
     conn = db.get_connection()
-    
-    
-    tables = db.execute_query(conn,GET_DB_TABLE_SCHEMA,{})
-    for table in tables :
-        columns = db.execute_query(conn=conn,query= GET_DB_COLUMN_SCHEMA,params=(table.get('table_name'),))
-        print(table)
-        print(columns)
+    tables = db.execute_query(conn,"SELECT * FROM returns limit 10;")
+    print(tables)
+   
