@@ -1,16 +1,22 @@
-from src.agents.sql_engineer import build_schema_context, engineer
-from src.agents.etl_architect import build_graph
+from src.graph.orchestrator import build_graph
+
 
 def main():
-   # print(build_schema_context())
     question = "Show top 5 campaigns by roi with highest revenue"
     print(f"User question: {question}")
-    pipeline = build_graph()
-    
-    result = pipeline.invoke({})
 
-    print(f"Status: {result['status']}")
-    print(f"Records fetched: {result['count']}")
+    result = build_graph().invoke(
+        {
+            "question": question,
+            "force_refresh": False,
+        }
+    )
+
+    print(f"Status: {result.get('status')}")
+    if result.get("answer"):
+        print(result["answer"])
+    elif result.get("error"):
+        print(f"Error: {result['error']}")
 
 
 if __name__ == "__main__":
