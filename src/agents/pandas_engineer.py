@@ -4,32 +4,9 @@ from pathlib import Path
 import pandas as pd
 from langchain.agents import create_agent
 from src.agents.base import agent_factory_model
+from config.constant import PANDAS_ENGINEER_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
-
-
-PANDAS_ENGINEER_SYSTEM_PROMPT = """
-You are a Pandas data analysis engineer.
-Generate ONE valid Python Pandas expression using the DataFrame `df` to answer the user's request.
-
-Supported:
-- filtering
-- column selection
-- sorting
-- top/bottom N
-- max/min row selection
-- string matching
-- null checks
-
-
-Rules:
-- Return ONLY the expression. No markdown or explanation.
-- Use only columns and values supported by the provided schema/data.
-- Support filtering, column selection, sorting, and limiting when requested.
-- Never modify `df`, access files/network/system resources, import modules, or use eval/exec.
-- Never invent columns or values.
-- If the request cannot be safely expressed against the schema, return: INVALID_REQUEST
-"""
 
 
 CSV_FILE = Path("data/etl_cache/campaigns.csv")

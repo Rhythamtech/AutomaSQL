@@ -9,7 +9,12 @@ from dotenv import load_dotenv
 
 from src.agents.execution_sandbox import analyzer_agent, execute_safe
 from src.agents.pandas_engineer import engineer as pandas_engineer
+from src.agents.router import decide_route
+from src.agents.sql_engineer import engineer as sql_engineer
+from src.agents.sql_engineer import guardrail_DDL_DML
 from src.graph.state import ETLState
+from src.utils.database import DatabaseUtils
+from src.utils.observability import set_span_attributes
 
 load_dotenv()
 
@@ -145,24 +150,105 @@ def query_campaigns(state: ETLState) -> ETLState:
     }
 
 
+def query_sql(state: ETLState) -> ETLState:
+    try:
+        result = sql_engineer(state["question"])
+    except Exception as exc:
+        logger.exception("Failed to generate SQL query")
+        return {
+            "status": "sql_query_failed",
+            "error": f"Could not generate a SQL query: {exc}",
+        }
+
+    if not isinstance(result, dict) or result.get("status") != "SUCCESS":
+        return {
+            "status": "sql_query_failed",
+            "error": (result or {}).get("error", "Could not generate a valid SQL query."),
+        }
+
+    return {"sql": result["sql"], "status": "sql_generated"}
+
+
+def execute_sql(state: ETLState) -> ETLState:
+    query = state.get("sql")
+    if not query:
+        return {"status": "sql_query_failed", "error": "No SQL query was generated."}
+
+    guardrail_response = guardrail_DDL_DML(query)
+    if guardrail_response is not None:
+        return {
+            "status": "sql_query_failed",
+            "error": guardrail_response["error"],
+        }
+
+    conn = None
+    try:
+        db_utils = DatabaseUtils()
+        conn = db_utils.get_connection()
+        with conn.cursor() as cursor:
+            cursor.execute(query)
+            result = cursor.fetchall()
+        return {"query_result": result, "status": "sql_queried"}
+    except Exception as exc:
+        logger.exception("Failed to execute SQL query")
+        return {
+            "status": "sql_query_failed",
+            "error": f"Could not execute the SQL query: {exc}",
+        }
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def answer(state: ETLState) -> ETLState:
     question = state["question"]
     result = state.get("query_result")
 
     if result is None or (hasattr(result, "empty") and result.empty):
+        set_span_attributes({"automasql.status": "answer_failed", "automasql.route": state.get("route")})
         return {
             "answer": "Sorry, I couldn't answer your question. Please try again later.",
             "status": "answer_failed",
         }
 
+    final_answer = analyzer_agent(question, result)
+    set_span_attributes({"automasql.status": "answered", "automasql.route": state.get("route")})
     return {
-        "answer": analyzer_agent(question, result),
+        "answer": final_answer,
         "status": "answered",
     }
 
 
+def route_question(state: ETLState) -> ETLState:
+    """Route via the LLM router agent (primary=sql, latest-campaigns-only=pandas).
+
+    SQL (Postgres, data till T-2) covers: customers, products,
+    marketing_campaign, orders, order_items, payments, shipments, returns,
+    customer_reviews.
+
+    ETL/Pandas covers only the last 7 days of campaign data (latest campaigns
+    only, i.e. campaign_start_date >= today-30 AND campaign_start_date <=
+    today-7 AND campaign_end_date > today). Primary is sql; pandas only when
+    the question needs latest campaign data fresher than T-2.
+    """
+    question = state.get("question", "")
+    try:
+        route = decide_route(question)
+    except Exception:
+        logger.exception("route_question failed, defaulting to sql")
+        route = "sql"
+    if route not in ("sql", "pandas"):
+        route = "sql"
+    set_span_attributes({"automasql.route": route, "automasql.question": question})
+    return {"route": route}
+
+
+def route_after_question(state: ETLState) -> str:
+    return state.get("route", "sql")
+
+
 def route_after_freshness(state: ETLState) -> str:
     if state.get("is_fresh", False):
-        return "query"
+        return "query_pandas"
 
     return "fetch"

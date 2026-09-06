@@ -44,3 +44,22 @@ uv run uvicorn etl_api:app --reload
 Query params: `?channel=&type=&as_of=YYYY-MM-DD`
 
 Docs: `http://localhost:8000/docs`
+
+## Observability (Arize Phoenix)
+
+Open-source LLM evaluation and observability that runs locally with no login.
+Every LangGraph run (router -> SQL / ETL+pandas -> answer) and every LLM call
+(router, SQL engineer, pandas engineer, analyzer, eval judges) is traced via
+OpenInference auto-instrumentation.
+
+```bash
+uv sync
+uv run phoenix serve          # UI at http://localhost:6006 (no login)
+uv run python main.py         # traces appear under project "automasql"
+uv run python evals.py        # traces + judge scores (also uploaded as dataset)
+```
+
+ knobs (see `.env.example`): `PHOENIX_ENABLED`, `PHOENIX_PROJECT_NAME`,
+`PHOENIX_HOST`, `PHOENIX_PORT`, `PHOENIX_COLLECTOR_ENDPOINT`,
+`PHOENIX_LAUNCH_UI`. Tracing is a safe no-op when Phoenix is not installed
+or `PHOENIX_ENABLED=false`, so the app still runs without observability.

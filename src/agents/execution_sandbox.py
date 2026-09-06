@@ -1,27 +1,7 @@
 import pandas as pd
 from langchain_core.messages import HumanMessage, SystemMessage
 from src.agents.base import agent_factory_model
-
-
-
-
-DATA_ANALYSIS_SYSTEM_PROMPT = """You are a data analyst.
-
-Answer the user's question using ONLY the provided Data result.
-
-Rules:
-- Give the direct answer to the user's question.
-- Use only facts supported by the dataframe result.
-- Do not invent, assume, or estimate missing information.
-- If the result is empty or does not contain enough information, clearly say that the data is insufficient.
-- Preserve exact values from the result.
-- For numeric answers, include appropriate units when available.
-- Keep the response concise and easy to understand.
-- Do not mention Pandas, Python, AST, guardrails, expressions, or internal processing.
-- Do not explain how the answer was calculated unless the user asks.
-- If multiple rows/items are relevant, present them clearly as a short list or table.
-
-Provide the final answer to the user."""
+from config.constant import DATA_ANALYSIS_SYSTEM_PROMPT
 
 def analyzer_agent(question,context):
     agent = agent_factory_model("high")

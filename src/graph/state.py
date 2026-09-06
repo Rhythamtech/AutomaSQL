@@ -7,6 +7,8 @@ class ETLState(TypedDict, total=False):
     count: int
 
     question: str
+    route: str
+    sql: str
     query_result: object
 
     is_fresh: bool
