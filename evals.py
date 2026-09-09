@@ -16,7 +16,7 @@ from openevals.prompts import (
 )
 
 from src.graph.orchestrator import build_graph
-from src.utils.observability import log_evals_to_phoenix, setup_phoenix, span
+from src.utils.observability import span
 
 
 SCENARIOS: list[dict[str, Any]] = [
@@ -208,7 +208,6 @@ def _save_results(records: list[dict[str, Any]]) -> tuple[Path, Path]:
 
 def main() -> None:
     load_dotenv()
-    setup_phoenix()
     model = os.getenv("OPENAI_EVAL_MODEL")
     if not model or model == "xxxxxxxxxxx":
         raise RuntimeError("Set OPENAI_EVAL_MODEL in .env before running evals.py")
@@ -233,9 +232,6 @@ def main() -> None:
     graph = build_graph()
     records = [_evaluate_scenario(graph, scenario, evaluators) for scenario in SCENARIOS]
     json_path, csv_path = _save_results(records)
-    # Best-effort: mirror the eval records into Phoenix as a dataset so judge
-    # scores are visible next to traces. Never fails the eval run.
-    log_evals_to_phoenix(records)
 
     successful = sum(1 for record in records if record["evaluations"]["correctness"]["score"] is not None)
     print(f"Evaluated {len(records)} scenarios; {successful} produced judge scores.")

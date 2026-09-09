@@ -19,7 +19,7 @@ import time
 import traceback
 
 from src.graph.orchestrator import build_graph
-from src.utils.observability import phoenix_ui_url, setup_phoenix, span
+from src.utils.observability import span
 
 logger = logging.getLogger(__name__)
 
@@ -219,9 +219,6 @@ def main() -> None:
     )
     print(f"AutomaSQL full-workflow run: {len(SCENARIOS)} scenario(s)")
     print("SQL = Postgres till T-2 (primary). ETL/Pandas = latest campaigns (last 7 days).")
-    print()
-    setup_phoenix()
-    print(f"Phoenix UI (no login): {phoenix_ui_url()}  (run `uv run phoenix serve` if it is not up)")
     print()
 
     graph = build_graph()
